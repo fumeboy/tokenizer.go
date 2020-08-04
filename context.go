@@ -1,5 +1,7 @@
 package tokenizer
 
+import "fmt"
+
 type Context interface {}
 
 type context struct {
@@ -11,6 +13,10 @@ type context struct {
 	reg_token *token
 	matched map[string][][]byte
 	ctx Context
+
+
+
+	error ierr
 }
 
 func NEWcontext(ctx Context, text []byte) *context {
@@ -54,5 +60,37 @@ func (this *context) err(n []*separator) ierr{
 		have_token: this.have_token,
 		will_token: this.reg_token,
 		next_seps:  n,
+	}
+}
+
+func (this *context) RUN(path *path) ierr {
+	if err := this.match(path,nil); err != nil {
+		this.error = err
+		return err
+	}
+	if this.reg_token != nil{
+		this.add(this.text[this.i:])
+	}
+	return  nil
+}
+
+func (this *context) Display() {
+	if this.error == nil {
+		fmt.Println("text:",`"`+string(this.text)+`"`)
+		for k,v := range this.matched{
+			fmt.Println("  token <"+k+">","=>")
+			for _,vv := range v{
+				fmt.Println("  - ", string(vv))
+			}
+		}
+		fmt.Println("====")
+	}else{
+		this.error.display()
+		for k,v := range this.matched{
+			fmt.Println("  token <"+k+">","=>")
+			for _,vv := range v{
+				fmt.Println("  - ", string(vv))
+			}
+		}
 	}
 }

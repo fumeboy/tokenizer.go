@@ -20,7 +20,17 @@ func Path(nodes ...itoken) *path {
 	if _, ok := nodes[0].(*token); ok{
 		panic("path 的首个项不能是 token")
 	}
-	return &path{nodes: nodes}
+	p := &path{nodes: []itoken{}}
+	for _,v := range nodes{
+		switch v.(type) {
+		case *path:
+			p.nodes = append(p.nodes, v.(*path).nodes...)
+			break
+		default:
+			p.nodes = append(p.nodes, v)
+		}
+	}
+	return p
 }
 
 type token struct {

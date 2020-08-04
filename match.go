@@ -1,7 +1,5 @@
 package tokenizer
 
-import "fmt"
-
 func (this *path) l() []*separator {
 	for i, l := 0, len(this.nodes); i < l; i++ {
 		if _, ok := this.nodes[i].(*token); !ok {
@@ -28,9 +26,17 @@ func (this *separator) l() []*separator {
 	return []*separator{this}
 }
 
-func (this *path) Match(ctx *context) ierr {
-	for i, l := 0, len(this.nodes); i < l; i++ {
-		word := this.nodes[i]
+func (ctx *context) match(p *path, end []*separator) ierr {
+	i, l := 0, len(p.nodes)
+	var word itoken
+	var next = func() []*separator{
+		if i != l-1 {
+			return p.nodes[i+1].l()
+		}
+		return end
+	}
+	for ; i < l; i++ {
+		word = p.nodes[i]
 		switch word.(type) {
 		case *separator:
 			s := split(ctx, word.(*separator))
@@ -40,11 +46,6 @@ func (this *path) Match(ctx *context) ierr {
 			break
 		case *token:
 			ctx.reg_token = word.(*token)
-			break
-		case *path:
-			if err := word.(*path).Match(ctx); err != nil {
-				return err
-			}
 			break
 		case *repeat:
 			rp := word.(*repeat)
@@ -56,7 +57,7 @@ func (this *path) Match(ctx *context) ierr {
 			}
 			var s *separator
 			for {
-				if err := rp.repeated.Match(ctx); err != nil {
+				if err := ctx.match(rp.repeated, []*separator{rp.sep, rp.right}); err != nil {
 					return err
 				}
 				s = split(ctx, rp.sep, rp.right)
@@ -76,20 +77,29 @@ func (this *path) Match(ctx *context) ierr {
 
 			for j, k := 0, len(r.paths); j < k; j++ {
 				s := r.paths[j].l()
-				for m, n := 0, len(s); m < n; m++ {
+				for m, n := 0, len(s); m < n; m++ { // #2
 					spm[s[m]] = r.paths[j]
 				}
 				seps = append(seps, s...)
 			}
+			if r.optional { // #1
+				if pp := next(); pp != nil {
+					seps = append(seps, pp...)
+				}
+			}
 			ret_sep := split(ctx, seps...)
 			if ret_sep == nil {
-				if !r.optional{
+				if !r.optional {
 					return ctx.err(seps)
 				}
-			}else{
+			} else {
 				ctx.borrow = ret_sep
-				if err := spm[ret_sep].Match(ctx); err != nil {
-					return err
+				if spm[ret_sep] == nil { // #1
+
+				}else{
+					if err := ctx.match(spm[ret_sep], next()); err != nil { // #2
+						return err
+					}
 				}
 			}
 		}
@@ -98,7 +108,7 @@ func (this *path) Match(ctx *context) ierr {
 }
 
 func split(ctx *context, sep ...*separator) *separator {
-	if ctx.borrow != nil{
+	if ctx.borrow != nil {
 		b := ctx.borrow
 		ctx.borrow = nil
 		return b
@@ -107,88 +117,98 @@ func split(ctx *context, sep ...*separator) *separator {
 	var i = 0
 	var j = 0
 	var l = len(text)
+	var n = len(sep)
 
-	var t = 0
-	var lt = len(sep)
-	var this = sep[t]
+	var separators = []*separator{}
+	var if_notblank *separator
+	var if_blank *separator
+	for m := 0; m < n; m++ {
+		switch sep[m].text {
+		case NotBlank:
+			if_notblank = sep[m]
+			break
+		case " ":
+			if_blank = sep[m]
+			break
+		default:
+			separators = append(separators, sep[m])
+		}
+	}
+	n = len(separators)
 
-	var failed = false
 	var success = func() {
+		ctx.i += i
 		if ctx.reg_token != nil { //捕获
 			ctx.add(text[:j])
 		}
 	}
-	var fail = func() {
-		failed = true
-	}
-lalala:
-	switch this.text {
-	case " ": //blank, 匹配一或多个连续的空格
-		for ; i < l; i++ {
-			if text[i] == ' ' {
-				j = i
-				break
+	if ctx.reg_token == nil {
+		if if_blank != nil && text[0] == ' ' {
+			for ; i < l; i++ {
+				if text[i] != ' ' {
+					break
+				}
 			}
+			success()
+			return if_blank
 		}
 		for ; i < l; i++ {
 			if text[i] != ' ' {
 				break
 			}
 		}
-		if i > 0 {
-			//匹配到了空格
-			success()
-		} else {
-			//没匹配到空格，但实际上这种情况很少吧
-			fail()
-		}
-		break
-	case NotBlank:
-		for ; i < l; i++ {
-			if text[i] != ' ' {
-				j = i
-				break
-			}
-		}
-		if j == i {
-			success()
-		} else {
-			fail()
-		}
-		break
-	default:
-		k, lk := 0, len(this.text)
-		for ; i < l; i++ {
-			if text[i] == this.text[0]{
-				j = i
-				break
-			}
-		}
-		for ; i < l && k < lk; {
-			if text[i] != this.text[k] {
-				break
-			}
-			i++
-			k++
-		}
-		if k == lk && k != 0 {
-			success()
-		} else {
-			fail()
-		}
-	}
-	if failed {
-		t++
-		if t < lt {
-			i = 0
-			j = 0
-			this = sep[t]
-			goto lalala
-		} else {
+		if i == l {
 			return nil
 		}
+		j = i
+		for m := 0; m < n; m++ {
+			s := separators[m]
+			if i+len(s.text) <= l && equal(text[i:len(s.text)+i],[]byte(s.text)) {
+				i = i+len(s.text)
+				success()
+				return s
+			}
+		}
+		if if_notblank != nil {
+			success()
+			return if_notblank
+		}
+	} else {
+		for ; i < l; i++ {
+			if if_blank != nil && text[i] == ' '{
+				j = i
+				for ; i < l; i++ {
+					if text[i] != ' ' {
+						break
+					}
+				}
+				success()
+				return if_blank
+			}
+			for m := 0; m < n; m++ {
+				s := separators[m]
+				if text[i] == s.text[0]{
+					if i+len(s.text) < l && equal(text[i:len(s.text)+i],[]byte(s.text)) {
+						j = i
+						i = i+len(s.text)
+						success()
+						return s
+					}
+				}
+			}
+		}
 	}
-	fmt.Println(i, string(this.text))
-	ctx.i += i
-	return this
+	return nil
+}
+
+func equal(a []byte, b []byte) bool {
+	if len(a) != len(b){
+		return false
+	}
+	for i,l := 0,len(a);i<l;i++{
+		if a[i] != b[i]{
+			return false
+		}
+	}
+	return true
 }

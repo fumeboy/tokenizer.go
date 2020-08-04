@@ -1,15 +1,15 @@
 package tokenizer
 
 import (
-	"fmt"
 	"testing"
 )
 
-func TestT(t *testing.T) {
+func Test1(t *testing.T) {
 	var (
 		function_name = Path(
 			Sep(NotBlank),
 			Token("function_name"),
+			Option(Path(Sep(" "))),
 		)
 		param = Branch(
 			Path(
@@ -20,6 +20,7 @@ func TestT(t *testing.T) {
 			Path(
 				Sep(NotBlank),
 				Token("param"),
+				Option(Path(Sep(" "))),
 			),
 		)
 
@@ -31,9 +32,14 @@ func TestT(t *testing.T) {
 			),
 		)
 
-		text = []byte("let apple(a,b,c,'abc','a b c')")
+		text = []byte("let apple")
 		ctx = NEWcontext(nil,text)
-	)
 
-	fmt.Println(sentence_.Match(ctx),ctx.matched)
+		text2 = []byte("let apple(a,b,c,'abc','a b c')")
+		ctx2 = NEWcontext(nil,text2)
+	)
+	ctx.RUN(sentence_)
+	ctx.Display()
+	ctx2.RUN(sentence_)
+	ctx2.Display()
 }

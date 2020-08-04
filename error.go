@@ -1,7 +1,9 @@
 package tokenizer
 
+import "fmt"
+
 type ierr interface {
-	display() string
+	display()
 }
 
 type find_sep_err struct {
@@ -11,8 +13,18 @@ type find_sep_err struct {
 	next_seps []*separator // 接下来应该遇到的分割符
 }
 
-func (f find_sep_err) display() string {
-	panic("implement me")
+func (f find_sep_err) display() {
+	fmt.Println("index:", f.i)
+	if f.have_token != nil {
+		fmt.Println("have_matched:", f.have_token.identifier)
+	}
+	if f.will_token != nil {
+		fmt.Println("will_match:", f.will_token.identifier)
+	}
+	fmt.Println("next_seps:")
+	for _,v := range f.next_seps {
+		fmt.Println("  ", `"`+string(v.text)+`"`)
+	}
 }
 
 type token_check_error struct {
@@ -21,6 +33,5 @@ type token_check_error struct {
 	token *token
 }
 
-func (this *token_check_error) display() string {
-	return ""
+func (this *token_check_error) display() {
 }
